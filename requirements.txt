@@ -1,0 +1,6 @@
+streamlit
+PyPDF2
+pdfplumber
+Pillow
+reportlab
+fitz  # PyMuPDF
