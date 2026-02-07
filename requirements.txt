@@ -4,3 +4,4 @@ numpy
 Pillow
 easyocr
 pdf2image
+pymupdf
