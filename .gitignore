@@ -1,16 +1,32 @@
-# Python
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Environments (Don't upload your local library folder)
 env/
 venv/
-.idea/
-.vscode/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Streamlit
-.streamlit/
+# OCR Model Data (EasyOCR downloads models here)
+# You don't want to upload 100MB+ of model data to GitHub
+.EasyOCR/
 
-# OS
+# Temporary PDF/Image processing files
+*.pdf
+*.png
+*.jpg
+*.jpeg
+!arial.ttf
+
+# OS specific files
 .DS_Store
 Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
