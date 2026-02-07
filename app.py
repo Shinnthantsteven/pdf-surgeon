@@ -5,13 +5,11 @@ from PIL import Image, ImageDraw, ImageFont
 from pdf2image import convert_from_bytes
 import easyocr
 import io
-import arabic_reshaper
-from bidi.algorithm import get_display
 
 # --- 1. Load OCR Reader ---
 @st.cache_resource
 def load_reader():
-    return easyocr.Reader(['en', 'ar'])
+    return easyocr.Reader(['en'])  # English only
 
 reader = load_reader()
 
@@ -71,18 +69,11 @@ if uploaded_file:
         except:
             font = ImageFont.load_default()
         
-        # Handle Arabic shaping if needed
-        if any('\u0600' <= c <= '\u06FF' for c in new_val):
-            reshaped_text = arabic_reshaper.reshape(new_val)
-            display_text = get_display(reshaped_text)
-        else:
-            display_text = new_val
-        
         # Center new text in the bounding box
-        w_text, h_text = draw.textsize(display_text, font=font)
+        w_text, h_text = draw.textsize(new_val, font=font)
         x_center = (tl[0] + tr[0]) // 2
         y_center = (tl[1] + bl[1]) // 2
-        draw.text((x_center - w_text // 2, y_center - h_text // 2), display_text, fill=(0,0,0), font=font)
+        draw.text((x_center - w_text // 2, y_center - h_text // 2), new_val, fill=(0,0,0), font=font)
 
         with col2:
             st.subheader("2️⃣ Fixed Page")
