@@ -1,63 +1,78 @@
 import streamlit as st
-import fitz  # PyMuPDF
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from pdf2image import convert_from_bytes
+import easyocr
 import io
 
-st.set_page_config(layout="wide")
-st.title("🛡️ Native PDF Surgeon (No OCR)")
-st.write("This edits the PDF data directly. No conversion, no quality loss, no language errors.")
+# Setup OCR for precision
+@st.cache_resource
+def load_reader():
+    return easyocr.Reader(['en', 'ar'])
 
-uploaded_file = st.file_uploader("Upload Native PDF", type=['pdf'])
+reader = load_reader()
+
+st.title("🎯 Surgical PDF Repair")
+st.write("Click exactly where the error is to heal the document texture.")
+
+uploaded_file = st.file_uploader("Upload Scanned PDF", type=['pdf'])
 
 if uploaded_file:
-    # Load the PDF from memory
-    file_bytes = uploaded_file.read()
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    # 1. Convert PDF to High-Res Image
+    images = convert_from_bytes(uploaded_file.read(), dpi=300)
+    img_pil = images[0].convert("RGB")
+    img_np = np.array(img_pil)
     
+    # 2. UI: Find and Replace
     col1, col2 = st.columns(2)
     
     with col1:
-        page_num = st.number_input("Page Number", min_value=1, max_value=len(doc), value=1) - 1
-        search_text = st.text_input("Text/Number to Find (e.g., '12345')")
-        replace_text = st.text_input("New Text/Number")
+        st.subheader("Target Area")
+        # We find the text but we only show you what we FOUND to avoid errors
+        results = reader.readtext(img_np)
+        options = [f"Replace '{res[1]}'" for res in results]
+        choice = st.selectbox("Pick the exact number to fix:", options)
+        new_val = st.text_input("Enter the CORRECT replacement:")
         
-        # Preview the page
-        page = doc[page_num]
-        pix = page.get_pixmap(dpi=150)
-        img_data = pix.tobytes("png")
-        st.image(img_data, caption="Original Page Preview")
+    if st.button("🚀 Run Seamless Repair") and new_val:
+        idx = options.index(choice)
+        bbox, original_text, conf = results[idx]
+        
+        # Convert bbox to integers
+        tl, tr, br, bl = [list(map(int, p)) for p in bbox]
+        rect = np.array([tl, tr, br, bl], dtype=np.int32)
 
-    if st.button("🚀 Apply Direct Data Fix") and search_text:
-        # 1. Locate the text coordinates in the PDF data
-        text_instances = page.search_for(search_text)
+        # --- THE SURGERY (OpenCV) ---
+        cv_img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         
-        if text_instances:
-            for inst in text_instances:
-                # 2. Add a Redaction (This deletes the old ink/data)
-                # fill=(1,1,1) is white. For a scan, you'd match the background.
-                page.add_redact_annot(inst, fill=(1, 1, 1)) 
-                page.apply_redactions()
-                
-                # 3. Insert New Text at the exact same spot
-                # This uses the PDF's internal coordinate system
-                page.insert_text(inst.tl, replace_with, 
-                                 fontsize=11, # You can adjust this to match
-                                 color=(0, 0, 0)) # Pure Black
+        # 1. Create a mask of the old text
+        mask = np.zeros(cv_img.shape[:2], np.uint8)
+        cv2.fillPoly(mask, [rect], 255)
+        
+        # 2. HEAL: This is the secret. It 'grows' the paper texture into the hole
+        # so there is no white box.
+        healed_cv = cv2.inpaint(cv_img, mask, 3, cv2.INPAINT_NS)
+        
+        # 3. OVERLAY: Put the new text back
+        final_img = Image.fromarray(cv2.cvtColor(healed_cv, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(final_img)
+        
+        # Auto-font size based on original box height
+        font_size = int(abs(bl[1] - tl[1]) * 0.9)
+        try:
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except:
+            font = ImageFont.load_default()
+
+        # Draw text at the exact same spot
+        draw.text((tl[0], tl[1]), new_val, fill=(0,0,0), font=font)
+        
+        with col2:
+            st.subheader("Fixed Result")
+            st.image(final_img, use_container_width=True)
             
-            # 4. Save the modified PDF
-            out_buf = io.BytesIO()
-            doc.save(out_buf)
-            
-            with col2:
-                st.success("Surgical fix applied to PDF data!")
-                # Show the result
-                new_pix = page.get_pixmap(dpi=150)
-                st.image(new_pix.tobytes("png"), caption="Edited Result")
-                
-                st.download_button(
-                    label="📥 Download Edited PDF",
-                    data=out_buf.getvalue(),
-                    file_name="fixed_document.pdf",
-                    mime="application/pdf"
-                )
-        else:
-            st.error(f"Text '{search_text}' not found in the PDF's internal data.")
+            # Export back to PDF
+            pdf_buf = io.BytesIO()
+            final_img.save(pdf_buf, format="PDF")
+            st.download_button("📥 Download Fixed PDF", pdf_buf.getvalue(), "surgical_fix.pdf")
