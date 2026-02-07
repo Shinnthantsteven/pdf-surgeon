@@ -1,6 +1,6 @@
 streamlit
-PyPDF2
-pdfplumber
+opencv-python-headless
+numpy
 Pillow
-reportlab
-fitz  # PyMuPDF
+easyocr
+pdf2image
